@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TradeBreakSchemas",
+  "description": "Strict JSON schemas for PortAgent trade break agent findings and citations",
+  "$defs": {
+    "Citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["citation_id", "evidence_id", "locator"],
+      "properties": {
+        "citation_id": { "type": "string" },
+        "evidence_id": { "type": "string" },
+        "locator": { "type": "string" },
+        "excerpt": { "type": "string" }
+      }
+    },
+    "BreakClassificationFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["break_type", "confidence", "reasoning"],
+      "properties": {
+        "break_type": {
+          "type": "string",
+          "enum": ["fee_break", "commission_break", "settlement_date_break", "ssi_break", "unknown"]
+        },
+        "confidence": { "type": "string", "pattern": "^0\\.[0-9]{2,4}$|^1\\.00?$" },
+        "reasoning": { "type": "string" }
+      }
+    },
+    "TradeAgreedTermsFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terms", "citations", "chronology_note", "confidence"],
+      "properties": {
+        "terms": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fee": { "type": "string" },
+            "commission": { "type": "string" },
+            "settlement_date": { "type": "string" },
+            "account": { "type": "string" }
+          }
+        },
+        "citations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Citation" }
+        },
+        "chronology_note": { "type": "string" },
+        "confidence": { "type": "string" }
+      }
+    }
+  }
+}

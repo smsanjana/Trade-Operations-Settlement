@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trade-operations-settlement"
+version = "0.1.0"
+description = "Governed PortAgent baseline for trade operations and settlement"
+requires-python = ">=3.12"
+dependencies = [
+  "starlette>=0.40,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "jsonschema>=4.23,<5",
+  "pyyaml>=6.0,<7",
+  "psycopg[binary]>=3.2,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1",
+  "mypy>=1.14,<2",
+  "pytest>=8.3,<9",
+  "pytest-cov>=6,<7",
+  "ruff>=0.9,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trade_operations_settlement"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["trade_operations_settlement"]

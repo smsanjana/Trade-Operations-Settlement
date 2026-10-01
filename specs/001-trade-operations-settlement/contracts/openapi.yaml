@@ -1,0 +1,548 @@
+openapi: 3.1.0
+info:
+  title: Trade Operations and Settlement Operations API
+  version: 1.0.0
+  description: >-
+    Authenticated analyst and approver API. Actor identity and roles are derived from the
+    authenticated context and are never accepted as client-authored decision fields.
+servers:
+  - url: /api/v1
+security:
+  - enterpriseIdentity: []
+tags:
+  - name: Cases
+  - name: Evidence
+  - name: Decisions
+  - name: Audit
+  - name: Voluntary events
+paths:
+  /cases:
+    get:
+      tags: [Cases]
+      operationId: listCases
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - name: state
+          in: query
+          schema: { type: string }
+        - name: dual_control
+          in: query
+          schema: { type: boolean }
+        - name: conflict
+          in: query
+          schema: { type: boolean }
+        - name: priority
+          in: query
+          schema: { $ref: '#/components/schemas/Priority' }
+        - name: case_type
+          in: query
+          schema: { $ref: '#/components/schemas/CaseType' }
+        - name: deadline_before
+          in: query
+          schema: { type: string, format: date-time }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [priority, age, deadline, updated_at]
+            default: priority
+      responses:
+        '200':
+          description: Cursor-paginated, stable queue projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/CaseSummary' }
+                  next_cursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Problem' }
+  /cases/{caseId}:
+    get:
+      tags: [Cases]
+      operationId: getCaseReviewSnapshot
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Consistent review snapshot bound to an ETag and case version.
+          headers:
+            ETag:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseReviewSnapshot' }
+        '404': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /cases/{caseId}/evidence:
+    get:
+      tags: [Evidence]
+      operationId: listCaseEvidence
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Evidence metadata and citations; unrestricted content is excluded.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/EvidenceReference' }
+                  next_cursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Problem' }
+  /cases/{caseId}/evidence/{evidenceId}:
+    get:
+      tags: [Evidence]
+      operationId: getAuthorizedEvidenceRendition
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - name: evidenceId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: Role-scoped rendition or excerpt with precise locator.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EvidenceRendition' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /cases/{caseId}/audit-events:
+    get:
+      tags: [Audit]
+      operationId: listCaseAuditEvents
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Chronological, append-only audit projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditEvent' }
+                  next_cursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Problem' }
+  /cases/{caseId}/decisions:
+    post:
+      tags: [Decisions]
+      operationId: recordDecision
+      description: >-
+        Records an immutable approve, amend, or reject action. Authenticated actor identity is
+        obtained from the server security context. A stale, replayed, or same-identity second
+        approval changes no state.
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecisionCommand' }
+      responses:
+        '201':
+          description: Decision appended and updated review snapshot returned.
+          headers:
+            ETag:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseReviewSnapshot' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409':
+          description: Stale version, replay, already-decided case, or dual-control identity reuse.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: Required note, amendment, or immutable snapshot reference is invalid.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /cases/{caseId}/desk-instructions:
+    post:
+      tags: [Voluntary events]
+      operationId: recordDeskInstruction
+      description: Records or links a human voluntary election; agent/service identities are denied.
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeskInstructionCommand' }
+      responses:
+        '201':
+          description: Human instruction appended.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseReviewSnapshot' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+components:
+  securitySchemes:
+    enterpriseIdentity:
+      type: openIdConnect
+      openIdConnectUrl: https://identity.invalid/.well-known/openid-configuration
+      description: Deployment supplies the approved issuer; this placeholder grants no authority.
+  parameters:
+    CaseId:
+      name: caseId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+  responses:
+    Problem:
+      description: Non-sensitive error response.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    DecimalString:
+      type: string
+      pattern: '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$'
+    Confidence:
+      allOf:
+        - $ref: '#/components/schemas/DecimalString'
+        - pattern: '^(0(\.[0-9]+)?|1(\.0+)?)$'
+    Currency:
+      type: string
+      pattern: '^[A-Z]{3}$'
+    Priority:
+      type: string
+      enum: [critical, high, normal]
+    CaseType:
+      type: string
+      enum:
+        - fee_break
+        - commission_break
+        - settlement_date_break
+        - ssi_break
+        - mandatory_stock_split
+        - mandatory_cash_dividend
+        - voluntary_corporate_action
+        - unsupported
+    CaseState:
+      type: string
+      enum:
+        - received
+        - evidence_pending
+        - review_required
+        - dual_control_required
+        - awaiting_second_approval
+        - ready_to_post
+        - posting_submitted
+        - reconciliation_required
+        - posted
+        - posting_failed
+        - rejected
+        - blocked
+        - reevaluation_required
+    Money:
+      type: object
+      additionalProperties: false
+      required: [amount, currency]
+      properties:
+        amount: { $ref: '#/components/schemas/DecimalString' }
+        currency: { $ref: '#/components/schemas/Currency' }
+    CaseSummary:
+      type: object
+      additionalProperties: false
+      required: [case_id, case_version, case_type, source, received_at, priority, state]
+      properties:
+        case_id: { type: string }
+        case_version: { type: integer, minimum: 1 }
+        case_type: { $ref: '#/components/schemas/CaseType' }
+        source: { type: string }
+        received_at: { type: string, format: date-time }
+        priority: { $ref: '#/components/schemas/Priority' }
+        state: { $ref: '#/components/schemas/CaseState' }
+        counterparty_or_custodian: { type: [string, 'null'] }
+        instrument_id: { type: [string, 'null'] }
+        exposure: { anyOf: [{ $ref: '#/components/schemas/Money' }, { type: 'null' }] }
+        confidence: { anyOf: [{ $ref: '#/components/schemas/Confidence' }, { type: 'null' }] }
+        deadline_at: { type: [string, 'null'], format: date-time }
+        conflict: { type: boolean }
+        dual_control: { type: boolean }
+    Hash:
+      type: object
+      additionalProperties: false
+      required: [algorithm, digest]
+      properties:
+        algorithm: { type: string, enum: [sha256] }
+        digest: { type: string, pattern: '^[a-f0-9]{64}$' }
+    Locator:
+      type: object
+      additionalProperties: false
+      required: [kind, value]
+      properties:
+        kind: { type: string, enum: [message, page, field, json_pointer, record] }
+        value: { type: string }
+    EvidenceReference:
+      type: object
+      additionalProperties: false
+      required: [evidence_id, kind, source_name, locator, captured_at, content_hash, screening_state]
+      properties:
+        evidence_id: { type: string }
+        kind: { type: string }
+        source_name: { type: string }
+        locator: { $ref: '#/components/schemas/Locator' }
+        captured_at: { type: string, format: date-time }
+        content_hash: { $ref: '#/components/schemas/Hash' }
+        screening_state: { type: string, enum: [passed, blocked, over_redacted, failed] }
+        usage: { type: string, enum: [used, rejected, duplicate, late] }
+        access: { type: string, enum: [content_allowed, metadata_only] }
+    EvidenceRendition:
+      type: object
+      additionalProperties: false
+      required: [evidence_id, kind, source_name, locator, captured_at, content_hash, screening_state]
+      properties:
+        evidence_id: { type: string }
+        kind: { type: string }
+        source_name: { type: string }
+        locator: { $ref: '#/components/schemas/Locator' }
+        captured_at: { type: string, format: date-time }
+        content_hash: { $ref: '#/components/schemas/Hash' }
+        screening_state: { type: string, enum: [passed, blocked, over_redacted, failed] }
+        usage: { type: string, enum: [used, rejected, duplicate, late] }
+        access: { type: string, enum: [content_allowed, metadata_only] }
+        excerpt: { type: [string, 'null'] }
+        rendition_url: { type: [string, 'null'], format: uri }
+        expires_at: { type: [string, 'null'], format: date-time }
+    Proposal:
+      type: object
+      additionalProperties: false
+      required: [proposal_id, version, account_id, direction, amount, value_date, reason_code, calculation_id, validity]
+      properties:
+        proposal_id: { type: string }
+        version: { type: integer, minimum: 1 }
+        account_id: { type: string }
+        direction: { type: string, enum: [debit, credit] }
+        amount: { $ref: '#/components/schemas/Money' }
+        value_date: { type: string, format: date }
+        reason_code: { type: string }
+        calculation_id: { type: string }
+        validity: { type: string, enum: [valid, invalidated, superseded] }
+    PolicyDecision:
+      type: object
+      additionalProperties: false
+      required: [policy_decision_id, policy_version, outcome, reason_codes, evaluated_at]
+      properties:
+        policy_decision_id: { type: string }
+        policy_version: { type: string }
+        outcome:
+          type: string
+          enum: [rejected, approval_required, dual_control_required, autonomous_authorized]
+        reason_codes:
+          type: array
+          items: { type: string }
+        evaluated_at: { type: string, format: date-time }
+    ApprovalDecision:
+      type: object
+      additionalProperties: false
+      required: [decision_id, action, actor_display, recorded_at]
+      properties:
+        decision_id: { type: string }
+        action: { type: string, enum: [approve, amend, reject] }
+        actor_display: { type: string }
+        note: { type: [string, 'null'] }
+        recorded_at: { type: string, format: date-time }
+    PostingStatus:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [not_created, ready, submitted, posted, rejected, outcome_unknown, reconciling, failed]
+        instruction_id: { type: [string, 'null'] }
+        authorization_class: { type: [string, 'null'], enum: [autonomous, human_approved, null] }
+        external_reference: { type: [string, 'null'] }
+    GoldenCopyField:
+      type: object
+      additionalProperties: false
+      required: [name, agreement_state, source_values]
+      properties:
+        name: { type: string }
+        normalized_value: {}
+        agreement_state: { type: string, enum: [agreed, partial, conflicting] }
+        source_values:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [source_name, value, citation]
+            properties:
+              source_name: { type: string }
+              value: {}
+              confidence: { anyOf: [{ $ref: '#/components/schemas/Confidence' }, { type: 'null' }] }
+              citation: { $ref: '#/components/schemas/EvidenceReference' }
+    VoluntaryEvent:
+      type: object
+      additionalProperties: false
+      required: [deadline_at, options, impacted_accounts, uninstructed_accounts]
+      properties:
+        deadline_at: { type: string, format: date-time }
+        options:
+          type: array
+          items: { type: string }
+        impacted_accounts:
+          type: array
+          items: { type: string }
+        uninstructed_accounts:
+          type: array
+          items: { type: string }
+    CaseReviewSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - case
+        - evidence_set_id
+        - summary
+        - policy_decision
+        - approvals
+        - posting
+        - allowed_actions
+      properties:
+        case: { $ref: '#/components/schemas/CaseSummary' }
+        evidence_set_id: { type: string }
+        summary: { type: string }
+        key_facts: { type: object, additionalProperties: true }
+        workflow_trace_reference: { type: [string, 'null'] }
+        evidence:
+          type: array
+          items: { $ref: '#/components/schemas/EvidenceReference' }
+        golden_copy:
+          type: array
+          items: { $ref: '#/components/schemas/GoldenCopyField' }
+        proposal: { anyOf: [{ $ref: '#/components/schemas/Proposal' }, { type: 'null' }] }
+        policy_decision: { $ref: '#/components/schemas/PolicyDecision' }
+        approvals:
+          type: array
+          items: { $ref: '#/components/schemas/ApprovalDecision' }
+        voluntary_event: { anyOf: [{ $ref: '#/components/schemas/VoluntaryEvent' }, { type: 'null' }] }
+        posting: { $ref: '#/components/schemas/PostingStatus' }
+        allowed_actions:
+          type: array
+          items: { type: string, enum: [approve, amend, reject, record_desk_instruction] }
+    DecisionCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - action
+        - expected_case_version
+        - evidence_set_id
+        - proposal_version
+        - policy_decision_id
+        - approval_cycle_id
+      properties:
+        action: { type: string, enum: [approve, amend, reject] }
+        expected_case_version: { type: integer, minimum: 1 }
+        evidence_set_id: { type: string }
+        proposal_version: { type: integer, minimum: 1 }
+        policy_decision_id: { type: string }
+        approval_cycle_id: { type: string }
+        note: { type: [string, 'null'], maxLength: 4000 }
+        amendment:
+          type: [object, 'null']
+          additionalProperties: false
+          properties:
+            amount: { $ref: '#/components/schemas/Money' }
+            value_date: { type: string, format: date }
+            reason_code: { type: string }
+      allOf:
+        - if:
+            properties: { action: { const: amend } }
+          then:
+            required: [note, amendment]
+            properties:
+              note: { type: string, minLength: 1, maxLength: 4000 }
+              amendment: { type: object }
+        - if:
+            properties: { action: { const: reject } }
+          then:
+            required: [note]
+            properties:
+              note: { type: string, minLength: 1, maxLength: 4000 }
+    DeskInstructionCommand:
+      type: object
+      additionalProperties: false
+      required: [expected_case_version, option, affected_accounts]
+      properties:
+        expected_case_version: { type: integer, minimum: 1 }
+        option: { type: string }
+        affected_accounts:
+          type: array
+          minItems: 1
+          items: { type: string }
+        external_instruction_reference: { type: [string, 'null'] }
+        note: { type: [string, 'null'], maxLength: 4000 }
+    AuditEvent:
+      type: object
+      additionalProperties: false
+      required: [audit_event_id, sequence, event_type, actor, occurred_at, versions]
+      properties:
+        audit_event_id: { type: string }
+        sequence: { type: integer, minimum: 1 }
+        event_type: { type: string }
+        actor: { type: string }
+        occurred_at: { type: string, format: date-time }
+        reason_codes:
+          type: array
+          items: { type: string }
+        versions:
+          type: object
+          additionalProperties: { type: string }
+        payload_reference: { type: [string, 'null'] }
+        payload_hash: { anyOf: [{ $ref: '#/components/schemas/Hash' }, { type: 'null' }] }
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, correlation_id]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string }
+        code: { type: string }
+        correlation_id: { type: string }
+        current_case_version: { type: [integer, 'null'] }

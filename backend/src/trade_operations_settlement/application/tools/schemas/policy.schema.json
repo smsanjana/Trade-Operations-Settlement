@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PolicyConfigurationAndGateInput",
+  "description": "JSON Schemas for policy configuration and structured gate inputs",
+  "$defs": {
+    "PolicyConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_version",
+        "desk_id",
+        "confidence_threshold",
+        "auto_post_limit",
+        "dual_control_threshold",
+        "eligible_case_types",
+        "effective_from"
+      ],
+      "properties": {
+        "policy_version": { "type": "string" },
+        "desk_id": { "type": "string" },
+        "confidence_threshold": { "type": "string", "pattern": "^0\\.[0-9]{2,4}$" },
+        "auto_post_limit": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{2})?$" },
+        "dual_control_threshold": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{2})?$" },
+        "eligible_case_types": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "effective_from": { "type": "string", "format": "date-time" },
+        "effective_to": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "PolicyGateInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_type", "exposure_amount", "confidence"],
+      "properties": {
+        "case_type": { "type": "string" },
+        "exposure_amount": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{2,4})?$" },
+        "confidence": { "type": "string", "pattern": "^0\\.[0-9]{2,4}$|^1\\.00?$" },
+        "has_evidence_conflict": { "type": "boolean" },
+        "has_missing_evidence": { "type": "boolean" },
+        "guardrail_triggered": { "type": "boolean" },
+        "agent_requested_escalation": { "type": "boolean" }
+      }
+    }
+  }
+}
